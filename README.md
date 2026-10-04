@@ -35,17 +35,16 @@ Sau khi hoàn thành, các bạn cần có khả năng:
 ├── data/            # dữ liệu benchmark dùng chung
 │   ├── conversations.json
 │   └── advanced_long_context.json
-└── src/             # bản scaffold dành cho sinh viên (pseudocode + TODO)
+├── STEP8.md         # kết quả benchmark và phân tích trade-off
+└── src/             # hai agent, memory layer, benchmark và bộ kiểm thử
     ├── model_provider.py
     ├── config.py
     ├── memory_store.py
     ├── agent_baseline.py
     ├── agent_advanced.py
     ├── benchmark.py
-    └── test_agents.py
 ```
 
-Khi chạy, agent sẽ ghi trạng thái (ví dụ `state/profiles/<user>/User.md`) vào thư mục `state/`. Thư mục này đã nằm trong `.gitignore`.
 
 ### Vai trò từng file trong `src/`
 

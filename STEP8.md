@@ -1,8 +1,6 @@
-# Bước 8 — Phân tích kết quả benchmark
+# Bước 8 — Nhận xét kết quả benchmark
 
-## Output đo được
-
-Hai lần chạy liên tiếp trên trạng thái tạm sạch cho cùng một output:
+Mình chạy benchmark hai lần với state tạm mới và nhận được cùng một kết quả. Các bảng dưới đây là số liệu từ chế độ offline.
 
 ### Standard Benchmark
 
@@ -18,28 +16,28 @@ Hai lần chạy liên tiếp trên trạng thái tạm sạch cho cùng một o
 | Baseline | 374 | 23,273 | 0.000 | 0.150 | 0 | 0 |
 | Advanced | 452 | 11,001 | 1.000 | 1.000 | 229 | 4 |
 
-Benchmark chạy offline. Token được ước lượng bằng số ký tự chia 4; `Response quality` là heuristic dùng chung: 85% điểm recall và 15% điểm độ dài câu trả lời gọn. Vì vậy các số này tái lập được trên máy khác, nhưng không phải token usage của provider thật hay điểm chấm từ LLM judge.
+Token ở đây được ước lượng từ độ dài văn bản, khoảng 4 ký tự cho một token. `Response quality` cũng là điểm heuristic: 85% dựa trên recall và 15% dựa trên độ dài câu trả lời. Vì vậy benchmark dễ chạy lại và so sánh, nhưng không đại diện cho token usage thật của từng provider hay điểm đánh giá từ LLM judge.
 
-## 1. Vì sao Advanced nhớ tốt hơn Baseline?
+## Khả năng nhớ qua các thread
 
-Ở Standard, Cross-session recall của Baseline là **0.000**, còn Advanced là **1.000**. Stress cũng cho kết quả **0.000 so với 1.000**. Baseline chỉ giữ message theo `thread_id`, còn Advanced dùng `extract_profile_updates()` để ghi facts vào `User.md` theo `user_id`, rồi `_offline_response()` đọc hồ sơ khi câu hỏi được gửi trong thread mới.
+Ở cả hai bộ dữ liệu, Baseline đạt recall **0.000**, còn Advanced đạt **1.000**. Đây là khác biệt đúng với thiết kế: Baseline chỉ giữ lịch sử theo `thread_id`; Advanced lưu các thông tin ổn định vào `User.md` theo `user_id`, rồi dùng hồ sơ đó khi câu hỏi được gửi ở thread mới.
 
-## 2. Vì sao Advanced tốn hơn ở hội thoại ngắn?
+## Chi phí ở hội thoại ngắn
 
-Trong Standard, Advanced sinh **1,911** agent tokens so với **1,437** của Baseline vì các câu trả lời recall có nội dung facts thay vì chỉ báo chưa biết. Prompt tokens processed là **27,596** so với **16,103**: mỗi lượt Advanced đưa profile vào prompt và có thể ghi thêm facts vào file. Mười hội thoại ngắn chưa kích hoạt compaction, nên phần ngữ cảnh profile chưa được bù bởi lịch sử đã lược bớt.
+Trong Standard, Advanced xử lý **27,596 prompt tokens**, cao hơn **16,103** của Baseline. Advanced đưa hồ sơ vào ngữ cảnh và trả lời recall bằng thông tin cụ thể, nên tốn thêm token. Các hội thoại trong bộ Standard chưa đủ dài để kích hoạt compact; ở quy mô này, lợi ích nhớ lâu chưa bù được phần chi phí tăng thêm.
 
-## 3. Vì sao compact có lợi ở hội thoại dài?
+## Tác dụng của compact ở hội thoại dài
 
-Trong stress, Prompt tokens processed của Advanced là **11,001**, thấp hơn Baseline **23,273** khoảng **52.7%**. `CompactMemoryManager` giữ bốn message gần nhất theo cấu hình mặc định, đưa message cũ vào summary có giới hạn và đã compact **4 lần**. Lợi thế này nằm ở **Prompt tokens processed**; Agent tokens only của Advanced vẫn cao hơn (**452** so với **374**) vì đây là token sinh ra trong câu trả lời, không phải ngữ cảnh được kéo vào prompt.
+Trong stress test, Advanced xử lý **11,001 prompt tokens**, so với **23,273** của Baseline — giảm khoảng **52.7%**. Hệ thống compact lịch sử **4 lần**, giữ lại các message gần nhất và tóm tắt phần cũ với độ dài giới hạn. Dù vậy, Advanced vẫn sinh **452 agent tokens**, nhiều hơn **374** của Baseline, vì câu trả lời có thêm dữ kiện. Như vậy, compact giúp giảm token đưa vào prompt; nó không nhất thiết làm phần câu trả lời ngắn hơn.
 
-## 4. Memory tăng trưởng và rủi ro
+## Tăng trưởng bộ nhớ và giới hạn
 
-Advanced tăng **345 bytes** trên Standard và **229 bytes** trên stress; Baseline tăng **0 bytes** vì không có `User.md`. Ở stress có **4 compactions**; Standard có **0**, phù hợp với việc hội thoại ngắn chưa vượt ngưỡng hữu ích để nén. Profile nhỏ ở benchmark này nhưng sẽ tích lũy theo số facts và người dùng trong thời gian dài. Summary compact có thể làm mất chi tiết cũ; một correction được phát biểu rõ nhưng sai cũng có thể ghi đè fact đúng.
+Hồ sơ của Advanced tăng **345 bytes** trong Standard và **229 bytes** trong stress test. Baseline không tạo `User.md`, nên memory growth bằng **0 bytes**. Summary có giới hạn giúp tránh giữ nguyên toàn bộ lịch sử, nhưng khi compact, một số chi tiết cũ có thể bị mất. Bộ trích xuất cũng dựa trên quy tắc; nếu nhận nhầm một phát biểu thành correction rõ ràng, nó có thể ghi đè dữ kiện trước đó.
 
-## Bonus — xử lý correction mới
+## Bonus: cập nhật khi có correction
 
-Facts được lưu theo field, nên phát biểu hiện tại rõ ràng sẽ thay giá trị cũ của cùng field. Ví dụ, profile chuyển nơi ở từ Huế sang Đà Nẵng trong stress và từ backend engineer sang MLOps engineer trong Standard; câu hỏi ở thread mới nhận lại giá trị hiện tại. Extractor tách mệnh đề đối lập để giữ phần đính chính hiện tại, đồng thời loại giả định tương lai, câu hỏi và đoạn đùa như lời nhắc “product manager”. Hồ sơ dùng ID ổn định có hậu tố băm để hai ID khác nhau không va chạm trên cùng một đường dẫn. Cơ chế này giúp recall correction tốt hơn và giữ một giá trị cho mỗi field thay vì chất chồng các phiên bản cũ, nhưng nếu người dùng đưa ra một correction rõ ràng mà sai thì hệ thống vẫn có thể tin nhầm; memory decay hoặc bước xác nhận sẽ là guardrail tiếp theo.
+Các fact được lưu theo từng field. Khi người dùng nói rõ thông tin mới, chẳng hạn chuyển nơi ở từ Huế sang Đà Nẵng, Advanced thay giá trị cũ thay vì giữ cả hai như thông tin hiện tại. Bộ trích xuất cũng bỏ qua câu hỏi, giả định và câu đùa như câu liên quan đến nghề `product manager`. Cách này giúp hồ sơ giữ dữ kiện mới nhất để trả lời ở thread khác; đổi lại, một correction sai nhưng được nói chắc chắn vẫn có thể làm hồ sơ sai. Có thể giảm rủi ro đó bằng bước xác nhận trước khi lưu những thay đổi quan trọng.
 
 ## Kiểm thử
 
-Toàn bộ **32 kiểm thử** trong `src/` đã chạy thành công, gồm các ca giả định/không chắc chắn, correction sau mệnh đề lịch sử, tách biệt đường dẫn profile, compaction lặp lại và validation dữ liệu đầu vào.
+Toàn bộ **32 kiểm thử** trong `src/` đều đạt. Các ca kiểm thử bao gồm lưu và cập nhật hồ sơ, recall giữa các thread, correction, giả định không chắc chắn, compact lặp lại và kiểm tra dữ liệu benchmark đầu vào.
